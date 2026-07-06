@@ -74,7 +74,7 @@ uint8_t EEPROM_to_SD(void)
 
     f_lseek(&file, f_size(&file));
 
-    uint16_t addr = 0x0100;
+    uint32_t addr = 0x0100;
 
     while (addr < eeprom_log_addr)
     {

@@ -27,6 +27,7 @@
 #include <EEPROM_spi.h>
 #include <CH376S_uart.h>
 #include <UD_Interrupts.h>
+#include <EEPROM_i2c.h>
 
 /* ================= FATFS (SD) ================= */
 #include "ff.h"
@@ -38,6 +39,8 @@
 #define BTN_ERASE       GPIO_PIN_3   // PD3
 #define BTN_PORT        GPIO_PORTD_BASE
 
+#define FLASH_LOG_START   0x00000100
+#define FLASH_LOG_END     0x0FFFFFF0
 /* ---------------- LOG MESSAGE DEFINITIONS ---------------- */
 #define LOG_MESSAGE_CAN_ID     0x210
 
@@ -94,6 +97,7 @@ volatile bool sd_dump_request = false;
 volatile bool usb_dump_request = false;
 volatile bool direct_usb_dump_request = false;
 volatile bool fragmessage = false;
+volatile bool log_updated = false;
 /* ================= NUMERICAL ================= */
 uint8_t test;
 uint8_t count;
@@ -143,7 +147,17 @@ int b = 0;
 int main(void)
 {
     TIVA_Init();
-    Flash_SectorErase(eeprom_log_addr & 0xFF000000);
+
+    eeprom_log_addr = EEPROM_ReadPointer();
+
+    if((eeprom_log_addr < FLASH_LOG_START) ||
+       (eeprom_log_addr >= FLASH_LOG_END) ||
+       ((eeprom_log_addr & 0x0F) != 0))
+    {
+        eeprom_log_addr = FLASH_LOG_START;
+        EEPROM_WritePointer(eeprom_log_addr);
+    }
+
     while(1)
     {
         Tick_Functions();
@@ -248,7 +262,8 @@ void Dump_Functions(void)
         eeprom_logging_enabled = false;
         IntMasterDisable();
         Flash_SectorErase(0x000000);
-        eeprom_log_addr = 0x0100;
+        eeprom_log_addr = FLASH_LOG_START;
+        EEPROM_WritePointer(eeprom_log_addr);
         IntMasterEnable();
         eeprom_logging_enabled = true;
     }
@@ -362,7 +377,7 @@ void TIVA_Init(void)
                         UART_CONFIG_PAR_NONE);
 
     SPI_Init();
-    //I2C0_Init();
+    I2C1_Init();
     Buttons_Init();
     EEPROM_SPI_Init();
     Timer0_Init_1ms();
@@ -459,6 +474,11 @@ void v_1msTasks(void)
 
 void v_5msTasks(void)
 {
+    if(log_updated)
+    {
+        EEPROM_WritePointer(eeprom_log_addr);
+        log_updated = false;
+    }
     if (log_message_ready && eeprom_logging_enabled)
     {
         /* Write full 3-frame message (24 bytes) */
@@ -489,12 +509,16 @@ void v_5msTasks(void)
 
             eeprom_log_addr += 16;
 
-            if (eeprom_log_addr >= 0xFFFFFF)
-                eeprom_log_addr = 0x0100;
+            if (eeprom_log_addr >= FLASH_LOG_END)
+            {
+                eeprom_log_addr = FLASH_LOG_START;
+            }
 
             /* Also decode for live variables */
             decode_log_message();
             log_message_ready = false;
+
+            log_updated = true;
         }
     }
 //    static uint8_t logCount = 0;

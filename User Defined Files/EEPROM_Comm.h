@@ -35,7 +35,6 @@ static const uint8_t days_in_month[12] =
     31,28,31,30,31,30,31,31,30,31,30,31
 };
 
-#define EEPROM_ADDR 0x50
 //============ Date and Time conversion ============
 #define GPS_EPOCH_YEAR 1980
 #define GPS_EPOCH_DAY_OFFSET 5U

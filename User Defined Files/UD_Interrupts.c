@@ -30,7 +30,7 @@ extern volatile uint8_t log_frame_active;
 extern volatile uint8_t log_frame_receive_mask;
 
 /* ---------------- LOG MESSAGE DEFINITIONS ---------------- */
-#define LOG_MSG_TYPE1          0x00
+#define LOG_MSG_TYPE1          0x30
 #define LOG_MSG_TYPE2          0x10
 
 void Timer0AIntHandler(void)
@@ -104,8 +104,8 @@ void CAN0IntHandler(void)
 
         if (sRXBufLog[0] == LOG_MSG_TYPE1)
         {
-            uint8_t seq_index = (sRXBufLog[1] >> 2) & 0x3F;
-
+            uint8_t seq_total = ((sRXBufLog[0] >> 4) & 0x0F) | ((sRXBufLog[1] & 0x03) << 4);
+            uint8_t seq_index = ((sRXBufLog[1] >> 2) & 0x3F);
             if((!log_frame_active) || (seq_index == 0))
             {
                 log_frame_active = 1;
@@ -114,7 +114,7 @@ void CAN0IntHandler(void)
                 log_frames_received = 0;
             }
 
-            if (seq_index < 3)
+            if (seq_index < seq_total)
             {
                 for (int i = 2; i < 8; i++)
                     log_frame_shadow[seq_index*6 + (i - 2)] = sRXBufLog[i];

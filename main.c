@@ -147,17 +147,12 @@ int b = 0;
 int main(void)
 {
     TIVA_Init();
-
     eeprom_log_addr = EEPROM_ReadPointer();
-
-    if((eeprom_log_addr < FLASH_LOG_START) ||
-       (eeprom_log_addr >= FLASH_LOG_END) ||
-       ((eeprom_log_addr & 0x0F) != 0))
+    if((eeprom_log_addr < FLASH_LOG_START) || (eeprom_log_addr >= FLASH_LOG_END) || ((eeprom_log_addr & 0x0F) != 0))
     {
         eeprom_log_addr = FLASH_LOG_START;
         EEPROM_WritePointer(eeprom_log_addr);
     }
-
     while(1)
     {
         Tick_Functions();
@@ -168,19 +163,8 @@ int main(void)
 
 void Buttons_Init(void)
 {
-    GPIOPinTypeGPIOInput(BTN_PORT,
-                         BTN_SD |
-                         BTN_USB |
-                         BTN_DIRECT_USB |
-                         BTN_ERASE);
-
-    GPIOPadConfigSet(BTN_PORT,
-                     BTN_SD |
-                     BTN_USB |
-                     BTN_DIRECT_USB |
-                     BTN_ERASE,
-                     GPIO_STRENGTH_2MA,
-                     GPIO_PIN_TYPE_STD_WPU);
+    GPIOPinTypeGPIOInput(BTN_PORT, BTN_SD | BTN_USB | BTN_DIRECT_USB | BTN_ERASE);
+    GPIOPadConfigSet(BTN_PORT, BTN_SD | BTN_USB | BTN_DIRECT_USB | BTN_ERASE, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
 }
 
 void Tick_Functions(void)
@@ -215,6 +199,7 @@ void Tick_Functions(void)
         tim_1s_tick_flag = 0;
     }
 }
+
 volatile uint32_t dump_count = 0;
 void Dump_Functions(void)
 {
@@ -242,16 +227,13 @@ void Dump_Functions(void)
     {
         direct_usb_dump_request = false;
         eeprom_logging_enabled = false;
-        if(UserUSB_IsReady())
-        {
-            IntDisable(INT_CAN0);
-            IntDisable(INT_TIMER0A);
-            SysTickIntDisable();
-            result = EEPROM_to_USB_DIRECT();
-            SysTickIntEnable();
-            IntEnable(INT_TIMER0A);
-            IntEnable(INT_CAN0);
-        }
+        IntDisable(INT_CAN0);
+        IntDisable(INT_TIMER0A);
+        SysTickIntDisable();
+        result = EEPROM_to_USB_DIRECT();
+        SysTickIntEnable();
+        IntEnable(INT_TIMER0A);
+        IntEnable(INT_CAN0);
         eeprom_logging_enabled = true;
     }
 
@@ -330,63 +312,42 @@ void TIVA_Init(void)
 {
     finish_flag = 0;
     g_sysClock = SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480), 120000000);
-
     SysTickPeriodSet(g_sysClock / 1000);   // 1 ms
-
     SysTickIntEnable();
     SysTickEnable();
-
     PeripheralEnable();
 
     /* USB D- D+ */
-    GPIOPinTypeUSBAnalog(GPIO_PORTB_BASE,
-                         GPIO_PIN_0 | GPIO_PIN_1);
+    GPIOPinTypeUSBAnalog(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
 
     /* USB power switch enable */
     GPIOPinConfigure(GPIO_PD6_USB0EPEN);
-    GPIOPinTypeUSBDigital(GPIO_PORTD_BASE,
-                          GPIO_PIN_6);
+    GPIOPinTypeUSBDigital(GPIO_PORTD_BASE, GPIO_PIN_6);
 
     /* USB ID + VBUS sense */
-    GPIOPinTypeUSBAnalog(GPIO_PORTL_BASE,
-                         GPIO_PIN_6 | GPIO_PIN_7);
+    GPIOPinTypeUSBAnalog(GPIO_PORTL_BASE, GPIO_PIN_6 | GPIO_PIN_7);
 
     /* USB power fault */
-    GPIOPinTypeGPIOInput(GPIO_PORTQ_BASE,
-                         GPIO_PIN_4);
+    GPIOPinTypeGPIOInput(GPIO_PORTQ_BASE, GPIO_PIN_4);
 
     /* PC4 = U7RX, PC5 = U7TX */
     GPIOPinConfigure(GPIO_PC4_U7RX);
     GPIOPinConfigure(GPIO_PC5_U7TX);
-
-    GPIOPinTypeUART(GPIO_PORTC_BASE,
-                    GPIO_PIN_4 | GPIO_PIN_5);
+    GPIOPinTypeUART(GPIO_PORTC_BASE, GPIO_PIN_4 | GPIO_PIN_5);
 
     /* PA0 = CAN0RX, PA1 = CAN0TX */
     GPIOPinConfigure(GPIO_PA0_CAN0RX);
     GPIOPinConfigure(GPIO_PA1_CAN0TX);
-
-    GPIOPinTypeCAN(GPIO_PORTA_BASE,
-                   GPIO_PIN_0 | GPIO_PIN_1);
-
-    UARTConfigSetExpClk(UART7_BASE,
-                        g_sysClock,
-                        9600,
-                        UART_CONFIG_WLEN_8 |
-                        UART_CONFIG_STOP_ONE |
-                        UART_CONFIG_PAR_NONE);
+    GPIOPinTypeCAN(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+    UARTConfigSetExpClk(UART7_BASE, g_sysClock, 9600, UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE);
 
     SPI_Init();
     I2C1_Init();
     Buttons_Init();
     EEPROM_SPI_Init();
     Timer0_Init_1ms();
-
     CANInit(CAN0_BASE);
-
-    CANBitRateSet(CAN0_BASE,
-                  g_sysClock,
-                  500000);
+    CANBitRateSet(CAN0_BASE, g_sysClock, 500000);
 
     /* Configure RX message object */
     sRXMsgObjLog.ui32MsgID       = LOG_MESSAGE_CAN_ID;
@@ -395,16 +356,10 @@ void TIVA_Init(void)
     sRXMsgObjLog.ui32MsgLen      = 8;
     sRXMsgObjLog.pui8MsgData     = sRXBufLog;
 
-    CANMessageSet(CAN0_BASE,
-                  1,
-                  &sRXMsgObjLog,
-                  MSG_OBJ_TYPE_RX);
+    CANMessageSet(CAN0_BASE, 1, &sRXMsgObjLog, MSG_OBJ_TYPE_RX);
 
     /* Enable CAN0 Interrupt */
-    CANIntEnable(CAN0_BASE,
-                 CAN_INT_MASTER |
-                 CAN_INT_ERROR |
-                 CAN_INT_STATUS);
+    CANIntEnable(CAN0_BASE, CAN_INT_MASTER | CAN_INT_ERROR | CAN_INT_STATUS);
     /* Enable interrupt */
     TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
@@ -420,52 +375,21 @@ void TIVA_Init(void)
     TimerEnable(TIMER0_BASE, TIMER_A);
 
     uint32_t ui32PLLRate;
-
     uDMAEnable();
     uDMAControlBaseSet(g_sDMAControlTable);
-
     USBStackModeSet(0, eUSBModeHost, 0);
-
-    USBHCDRegisterDrivers(
-        0,
-        g_ppHostClassDrivers,
-        NUM_CLASS_DRIVERS);
-
+    USBHCDRegisterDrivers(0, g_ppHostClassDrivers, NUM_CLASS_DRIVERS);
     UserUSB_Init();
-
-    USBHCDPowerConfigInit(
-        0,
-        USBHCD_VBUS_AUTO_HIGH |
-        USBHCD_VBUS_FILTER);
-
-    SysCtlVCOGet(
-        SYSCTL_XTAL_25MHZ,
-        &ui32PLLRate);
-
-    USBHCDFeatureSet(
-        0,
-        USBLIB_FEATURE_CPUCLK,
-        &g_sysClock);
-
-    USBHCDFeatureSet(
-        0,
-        USBLIB_FEATURE_USBPLL,
-        &ui32PLLRate);
-
-    USBHCDInit(
-        0,
-        g_pHCDPool,
-        HCD_MEMORY_SIZE);
+    USBHCDPowerConfigInit(0, USBHCD_VBUS_AUTO_HIGH | USBHCD_VBUS_FILTER);
+    SysCtlVCOGet(SYSCTL_XTAL_25MHZ, &ui32PLLRate);
+    USBHCDFeatureSet(0, USBLIB_FEATURE_CPUCLK, &g_sysClock);
+    USBHCDFeatureSet(0, USBLIB_FEATURE_USBPLL, &ui32PLLRate);
+    USBHCDInit(0, g_pHCDPool, HCD_MEMORY_SIZE);
 }
 
 void v_1msTasks(void)
 {
-    val = GPIOPinRead(BTN_PORT,
-                      BTN_SD |
-                      BTN_USB |
-                      BTN_DIRECT_USB |
-                      BTN_ERASE);
-
+    val = GPIOPinRead(BTN_PORT, BTN_SD | BTN_USB | BTN_DIRECT_USB | BTN_ERASE);
     sdPressed        = ((val & BTN_SD) == 0);
     usbPressed       = ((val & BTN_USB) == 0);
     directUSBPressed = ((val & BTN_DIRECT_USB) == 0);
@@ -479,6 +403,7 @@ void v_5msTasks(void)
         EEPROM_WritePointer(eeprom_log_addr);
         log_updated = false;
     }
+
     if (log_message_ready && eeprom_logging_enabled)
     {
         /* Write full 3-frame message (24 bytes) */
@@ -506,7 +431,6 @@ void v_5msTasks(void)
         {
             count = 0;
 //            EEPROM_ReadPage(eeprom_log_addr, rxdata, 16);
-
             eeprom_log_addr += 16;
 
             if (eeprom_log_addr >= FLASH_LOG_END)
@@ -517,7 +441,6 @@ void v_5msTasks(void)
             /* Also decode for live variables */
             decode_log_message();
             log_message_ready = false;
-
             log_updated = true;
         }
     }

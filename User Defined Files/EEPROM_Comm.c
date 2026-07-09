@@ -88,14 +88,10 @@ uint8_t EEPROM_to_SD(void)
         /* Convert seconds → calendar */
         uint16_t year;
         uint8_t month, day, hour, min, sec;
-
-        seconds_to_calendar(cpu_time_sec,
-                            &year, &month, &day,
-                            &hour, &min, &sec);
+        seconds_to_calendar(cpu_time_sec, &year, &month, &day, &hour, &min, &sec);
 
         //char line[256];
         uint8_t idx = 0;
-
         /* Date DD/MM/YYYY */
         idx += u32_to_dec(&line[idx], day);   line[idx++] = '/';
         idx += u32_to_dec(&line[idx], month); line[idx++] = '/';
@@ -118,12 +114,9 @@ uint8_t EEPROM_to_SD(void)
 
         line[idx++] = '\r';
         line[idx++] = '\n';
-
         f_write(&file, line, idx, &bw);
-
         addr += 16;   // move to next complete log message
     }
-
     f_sync(&file);
     f_close(&file);
     return 1;
@@ -163,13 +156,10 @@ uint8_t EEPROM_to_USB(void)
         uint16_t year;
         uint8_t month, day, hour, min, sec;
 
-        seconds_to_calendar(cpu_time_sec,
-                            &year, &month, &day,
-                            &hour, &min, &sec);
+        seconds_to_calendar(cpu_time_sec, &year, &month, &day, &hour, &min, &sec);
 
 //        char line[256];
         uint8_t idx = 0;
-
         idx += u32_to_dec(&line[idx], day);   line[idx++] = '/';
         idx += u32_to_dec(&line[idx], month); line[idx++] = '/';
         idx += u32_to_dec(&line[idx], year);  line[idx++] = ',';
@@ -198,10 +188,8 @@ uint8_t EEPROM_to_USB(void)
 //        }
 
         USB_BufferWrite(line, idx);
-
         addr += 16;
     }
-
     USB_BufferFlush();
     CH376_Close();
     return 1;
@@ -265,33 +253,17 @@ uint8_t TEST_USB_DIRECT(void)
     {
         /* Keep USB Host stack alive */
         UserUSB_Task();
-
         /* Read one complete log message from EEPROM */
         EEPROM_ReadPage(addr,     log_frame_buf_Read[0], 6);
         EEPROM_ReadPage(addr + 6, log_frame_buf_Read[1], 6);
         EEPROM_ReadPage(addr + 12,log_frame_buf_Read[2], 4);
-
-        if(addr + 16 >= eeprom_log_addr)
-        {
-            int x;
-            x = 3;
-        }
-
         decode_log_message();
 
         uint16_t year;
         uint8_t month, day, hour, min, sec;
-
-        seconds_to_calendar(cpu_time_sec,
-                            &year,
-                            &month,
-                            &day,
-                            &hour,
-                            &min,
-                            &sec);
+        seconds_to_calendar(cpu_time_sec, &year, &month, &day, &hour, &min, &sec);
 
         uint8_t idx = 0;
-
         /* Date */
         idx += u32_to_dec(&line[idx], day);
         line[idx++] = '/';
@@ -377,45 +349,25 @@ void decode_log_message(void)
     }
 
     /* -------- CPU_TIME_SEC -------- */
-    cpu_time_sec =
-        ((uint32_t)f0[0] << 24) |
-        ((uint32_t)f0[1] << 16) |
-        ((uint32_t)f0[2] << 8)  |
-        ((uint32_t)f0[3]);
+    cpu_time_sec = ((uint32_t)f0[0] << 24) | ((uint32_t)f0[1] << 16) | ((uint32_t)f0[2] << 8) | ((uint32_t)f0[3]);
 
     /* -------- LocoID (20 bits) -------- */
-    loco_id =
-        ((uint32_t)f0[4] << 12) |
-        ((uint32_t)(f0[5] >> 4) << 8) |
-        ((uint32_t)(f0[5] & 0x0F) << 4) |
-        ((uint32_t)(f1[0] >> 4));
+    loco_id = ((uint32_t)f0[4] << 12) | ((uint32_t)(f0[5] >> 4) << 8) | ((uint32_t)(f0[5] & 0x0F) << 4) | ((uint32_t)(f1[0] >> 4));
 
     /* -------- Speed (9 bits) -------- */
-    speed =
-        ((uint16_t)(f1[0] & 0x0F) << 5) |
-        ((uint16_t)(f1[1] >> 3));
+    speed = ((uint16_t)(f1[0] & 0x0F) << 5) | ((uint16_t)(f1[1] >> 3));
 
     /* -------- Absolute Location (23 bits) -------- */
-    abs_loc =
-        ((uint32_t)(f1[1] & 0x07) << 20) |
-        ((uint32_t)f1[2] << 12) |
-        ((uint32_t)f1[3] << 4) |
-        ((uint32_t)(f1[4] >> 4));
+    abs_loc = ((uint32_t)(f1[1] & 0x07) << 20) | ((uint32_t)f1[2] << 12) | ((uint32_t)f1[3] << 4) | ((uint32_t)(f1[4] >> 4));
 
     /* -------- Direction -------- */
     direction = (f1[4] >> 3) & 0x01;
 
     /* -------- Last RFID (23 bits) -------- */
-    last_rfid =
-            ((uint32_t)(f1[4] & 0x07) << 20) |
-            ((uint32_t)f1[5] << 12) |
-            ((uint32_t)f2[0] << 4) |
-            ((uint32_t)(f2[1] >> 4));
+    last_rfid = ((uint32_t)(f1[4] & 0x07) << 20) | ((uint32_t)f1[5] << 12) | ((uint32_t)f2[0] << 4) | ((uint32_t)(f2[1] >> 4));
 
     /* -------- TIN (9 bits) -------- */
-    tin =
-        ((uint16_t)((f2[1] & 0x0F) << 5)) |
-        ((uint16_t)((f2[2] & 0xF8) >> 3));
+    tin = ((uint16_t)((f2[1] & 0x0F) << 5)) | ((uint16_t)((f2[2] & 0xF8) >> 3));
 
     /* -------- Brake Type -------- */
     brake_type = (f2[2] & 0x07);
@@ -442,12 +394,10 @@ void SD_WRITE(void)
     if (res != FR_OK) while (1);
 
     char msg[] = "HELLO FROM TI\r\n";
-
     res = f_write(&file, msg, sizeof(msg)-1, &bw);
     if (res != FR_OK || bw == 0) while (1);
 
     f_sync(&file);
     f_close(&file);
-
     SysCtlDelay(SysCtlClockGet() / 3);
 }

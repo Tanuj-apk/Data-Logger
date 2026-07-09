@@ -33,29 +33,20 @@
 #include "ff.h"
 //#include "utils/uartstdio.h"
 
-
-
-
 /* Max path size. Kept 80 matching TI code, sorted for future subdirs. */
 #define PATH_BUF_SIZE   80
 
-
 /* Try 4 times, 500ms each = 2 sec timeout. */
 #define USBMSC_DRIVE_RETRY      40
-
 
 /* SysTick stuff coming from usb_host_msc.c */
 extern volatile uint32_t g_ui32SysTickCount;
 extern uint32_t GetTickms(void);
 
-
-/*
- * Main MSC instance handle.
+/* Main MSC instance handle.
  * CANNOT be static. fat_usbmsc.c uses this directly for diskio ops.
- * Making it static will throw a linker error.
- */
+ * Making it static will throw a linker error. */
 tUSBHMSCInstance *g_psMSCInstance = 0;
-
 
 /*
  * State tracking. Volatile coz they update in callbacks but read in main loop.
@@ -64,11 +55,9 @@ tUSBHMSCInstance *g_psMSCInstance = 0;
 volatile tState g_eState = STATE_NO_DEVICE;
 volatile tState g_eUIState = STATE_NO_DEVICE;
 
-
 /* Enumeration retry counters */
 static volatile uint32_t g_ui32DriveTimeout = USBMSC_DRIVE_RETRY;
 static volatile uint32_t g_ui32LastDriveCheck = 0;
-
 
 /* FatFs working memory. Must stay in scope. */
 static FATFS g_sFatFs;
@@ -76,23 +65,16 @@ static DIR g_sDirObject;
 static char g_cCwdBuf[PATH_BUF_SIZE] = "1:/";
 static volatile bool g_bNeedUnmount = false;
 
-
-
 /* Log file state. Volatile coz MSC_EVENT_CLOSE callback modifies it. */
 static FIL g_sLogFile;
 volatile bool g_bLogFileOpened = false;
 
-
 /* Save unknown class code for UART prints */
 static uint32_t g_ui32UnknownClass;
-
 
 /* Prototypes */
 void UserUSB_OpenLogFile(void);
 static void MSCCallback(tUSBHMSCInstance *ps32Instance, uint32_t ui32Event, void *pvData);
-
-
-
 
 /*
  * MSCCallback()

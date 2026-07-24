@@ -1,6 +1,7 @@
 /* ================= BASIC ================= */
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 /* ================= DRIVERLIB ================= */
 #include "inc/hw_can.h"    /* provides CAN_INT_INTID_STATUS etc. */
@@ -28,10 +29,36 @@
 #include <CH376S_uart.h>
 #include <UD_Interrupts.h>
 #include <EEPROM_i2c.h>
-
-/* ================= FATFS (SD) ================= */
 #include "ff.h"
 #include "sd_spi.h"
+
+/* ============================================================
+   INTERNAL EEPROM
+   ============================================================ */
+#include "driverlib/eeprom.h"
+
+#define EEPROM_DEVICE_ID_OFFSET    0
+uint32_t g_deviceID = 0;
+
+bool EEPROM_Init(void)
+{
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);
+
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_EEPROM0));
+
+    return (EEPROMInit() == EEPROM_INIT_OK);
+}
+bool EEPROM_ReadDeviceID(uint32_t *deviceID)
+{
+    if(deviceID == NULL)
+        return false;
+
+    EEPROMRead(deviceID,
+               EEPROM_DEVICE_ID_OFFSET,
+               sizeof(uint32_t));
+
+    return true;
+}
 
 #define BTN_SD          GPIO_PIN_0   // PD0 → EEPROM → SD
 #define BTN_USB         GPIO_PIN_1   // PD1 → EEPROM → CH376S → USB
@@ -42,7 +69,7 @@
 #define FLASH_LOG_START   0x00000100
 #define FLASH_LOG_END     0x0FFFFFF0
 /* ---------------- LOG MESSAGE DEFINITIONS ---------------- */
-#define LOG_MESSAGE_CAN_ID     0x210
+uint32_t g_logMessageCANID = 0x210;
 
 /* ================= DIRECT USB ================= */
 #define HCD_MEMORY_SIZE 128
@@ -315,6 +342,31 @@ void TIVA_Init(void)
     SysTickPeriodSet(g_sysClock / 1000);   // 1 ms
     SysTickIntEnable();
     SysTickEnable();
+
+    if(!EEPROM_Init())
+    {
+        while(1);
+    }
+    if(EEPROM_ReadDeviceID(&g_deviceID) &&
+       (g_deviceID != 0xFFFFFFFFU))
+    {
+        if(g_deviceID & 1U)
+        {
+            /* Odd Device ID */
+            g_logMessageCANID = 0x211;
+        }
+        else
+        {
+            /* Even Device ID */
+            g_logMessageCANID = 0x210;
+        }
+    }
+    else
+    {
+        /* Safe defaults */
+        g_logMessageCANID = 0x211;
+    }
+
     PeripheralEnable();
 
     /* USB D- D+ */
@@ -350,7 +402,7 @@ void TIVA_Init(void)
     CANBitRateSet(CAN0_BASE, g_sysClock, 500000);
 
     /* Configure RX message object */
-    sRXMsgObjLog.ui32MsgID       = LOG_MESSAGE_CAN_ID;
+    sRXMsgObjLog.ui32MsgID = g_logMessageCANID;
     sRXMsgObjLog.ui32MsgIDMask   = 0;
     sRXMsgObjLog.ui32Flags       = MSG_OBJ_RX_INT_ENABLE | MSG_OBJ_EXTENDED_ID;
     sRXMsgObjLog.ui32MsgLen      = 8;

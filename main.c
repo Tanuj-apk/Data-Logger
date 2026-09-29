@@ -28,6 +28,7 @@
 #include <CH376S_uart.h>
 #include <UD_Interrupts.h>
 #include <EEPROM_i2c.h>
+#include <EEPROM_Comm.h>
 
 /* ================= FATFS (SD) ================= */
 #include "ff.h"
@@ -39,21 +40,11 @@
 #define BTN_ERASE       GPIO_PIN_3   // PD3
 #define BTN_PORT        GPIO_PORTD_BASE
 
-#define FLASH_LOG_START   0x00000100
-#define FLASH_LOG_END     0x0FFFFFF0
-/* ---------------- LOG MESSAGE DEFINITIONS ---------------- */
-#define LOG_MESSAGE_CAN_ID     0x210
-
 /* ================= DIRECT USB ================= */
 #define HCD_MEMORY_SIZE 128
 
 uint8_t g_pHCDPool[HCD_MEMORY_SIZE];
-
-DECLARE_EVENT_DRIVER(
-    g_sUSBEventDriver,
-    0,
-    0,
-    USBHCDEvents);
+DECLARE_EVENT_DRIVER(g_sUSBEventDriver, 0, 0, USBHCDEvents);
 
 static tUSBHostClassDriver const * const g_ppHostClassDrivers[] =
 {
@@ -61,8 +52,7 @@ static tUSBHostClassDriver const * const g_ppHostClassDrivers[] =
     &g_sUSBEventDriver
 };
 
-#define NUM_CLASS_DRIVERS \
-(sizeof(g_ppHostClassDrivers) / sizeof(g_ppHostClassDrivers[0]))
+#define NUM_CLASS_DRIVERS (sizeof(g_ppHostClassDrivers) / sizeof(g_ppHostClassDrivers[0]))
 
 #if defined(ccs)
 #pragma DATA_ALIGN(g_sDMAControlTable, 1024)
@@ -70,20 +60,19 @@ static tUSBHostClassDriver const * const g_ppHostClassDrivers[] =
 
 volatile uint32_t systick_count = 0;
 tDMAControlTable g_sDMAControlTable[64];
-
 volatile uint32_t g_ui32SysTickCount = 0;
 
 uint32_t GetTickms(void)
 {
     return g_ui32SysTickCount;
 }
+
 void SysTickIntHandler(void)
 {
     systick_count++;
     g_ui32SysTickCount++;
 }
 /* ==================================================== */
-
 /* ================= BOOLEAN ================= */
 bool sdPressed;
 bool usbPressed;
@@ -96,33 +85,20 @@ volatile bool erase_flash_request = false;
 volatile bool sd_dump_request = false;
 volatile bool usb_dump_request = false;
 volatile bool direct_usb_dump_request = false;
-volatile bool fragmessage = false;
-volatile bool log_updated = false;
 /* ================= NUMERICAL ================= */
-uint8_t test;
-uint8_t count;
 uint8_t result;
 uint8_t sRXBufLog[8];
 uint8_t id[3];
 uint16_t usb_block_index;
 uint32_t val;
 uint32_t g_sysClock;
-volatile uint8_t framelength;
-
-//Test
-volatile uint8_t rxdata[16] = {0};
 
 /* ================= STRUCTURAL ================= */
 tCANMsgObject sRXMsgObjLog;
 
 /* ================= EXTERN ================= */
-extern uint32_t eeprom_log_addr;   // start address for log storage
-extern volatile bool eeprom_logging_enabled;
-extern volatile bool log_message_ready;
-extern volatile uint8_t log_frame_buf[3][6];
-extern volatile uint8_t log_frame_shadow[18];
-extern volatile uint8_t log_frame_buf_Read[3][6];
-extern volatile uint8_t log_frames_received;
+uint32_t eeprom_log_addr = FLASH_LOG_START;
+volatile bool eeprom_logging_enabled = true;
 
 /* ================= Tick Functions ================= */
 void v_1sTasks(void);
@@ -139,25 +115,27 @@ void Tick_Functions(void);
 void PeripheralEnable(void);
 
 /* ================= Extern Functions ================= */
-extern void decode_log_message(void);
 extern uint8_t EEPROM_to_SD(void);
 extern uint8_t EEPROM_to_USB(void);
 extern uint8_t EEPROM_to_USB_DIRECT(void);
 int b = 0;
+
 int main(void)
 {
     TIVA_Init();
-    eeprom_log_addr = EEPROM_ReadPointer();
-    if((eeprom_log_addr < FLASH_LOG_START) || (eeprom_log_addr >= FLASH_LOG_END) || ((eeprom_log_addr & 0x0F) != 0))
+//    eeprom_log_addr = EEPROM_ReadPointer();
+
+    if((eeprom_log_addr < FLASH_LOG_START) || (eeprom_log_addr >= FLASH_LOG_END) ||
+            (((eeprom_log_addr - FLASH_LOG_START) % EVENT_LOG_FLASH_RECORD_SIZE) != 0U))
     {
         eeprom_log_addr = FLASH_LOG_START;
-        EEPROM_WritePointer(eeprom_log_addr);
+//        EEPROM_WritePointer(eeprom_log_addr);
     }
     while(1)
     {
         Tick_Functions();
         Dump_Functions();
-        UserUSB_Task();
+//        UserUSB_Task();
     }
 }
 
@@ -294,7 +272,6 @@ void PeripheralEnable(void)
     SysCtlPeripheralReset(SYSCTL_PERIPH_SSI1);
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_SSI1));
 
-
     /* Enable uDMA */
     SysCtlPeripheralEnable(SYSCTL_PERIPH_UDMA);
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_UDMA));
@@ -342,6 +319,16 @@ void TIVA_Init(void)
     UARTConfigSetExpClk(UART7_BASE, g_sysClock, 9600, UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE);
 
     SPI_Init();
+
+//    /** Verify that the external SPI NOR flash is actually responding.
+//     * Flash_Probe() is bounded and will not wait forever if the flash is missing or disconnected. */
+//    if(!Flash_Probe())
+//    {
+//        /** Keep the TIVA running, but disable event logging because
+//         * the log memory is unavailable. */
+//        eeprom_logging_enabled = false;
+//    }
+
     I2C1_Init();
     Buttons_Init();
     EEPROM_SPI_Init();
@@ -350,7 +337,7 @@ void TIVA_Init(void)
     CANBitRateSet(CAN0_BASE, g_sysClock, 500000);
 
     /* Configure RX message object */
-    sRXMsgObjLog.ui32MsgID       = LOG_MESSAGE_CAN_ID;
+    sRXMsgObjLog.ui32MsgID       = EVENT_LOG_CAN_ID;
     sRXMsgObjLog.ui32MsgIDMask   = 0;
     sRXMsgObjLog.ui32Flags       = MSG_OBJ_RX_INT_ENABLE | MSG_OBJ_EXTENDED_ID;
     sRXMsgObjLog.ui32MsgLen      = 8;
@@ -398,80 +385,79 @@ void v_1msTasks(void)
 
 void v_5msTasks(void)
 {
-    if(log_updated)
+    uint8_t wire_record[EVENT_LOG_RX_MAX_RECORD_SIZE];
+    uint8_t wire_length;
+    uint8_t flash_record[EVENT_LOG_FLASH_RECORD_SIZE];
+
+    if(eeprom_logging_enabled)
     {
-        EEPROM_WritePointer(eeprom_log_addr);
-        log_updated = false;
-    }
-
-    if (log_message_ready && eeprom_logging_enabled)
-    {
-        /* Write full 3-frame message (24 bytes) */
-        if(count != 2)
-            framelength = 6;
-        if(count == 2)
-            framelength = 4;
-
-//        if(count==0)
-//        {
-//            Flash_SectorErase(eeprom_log_addr & 0xFF000000);
-//        }
-
-        EEPROM_PageProgram(eeprom_log_addr + 6*count, log_frame_buf[count], framelength);
-        //EEPROM_WritePage(eeprom_log_addr + 6*count, log_frame_buf[count], framelength);
-
-        fragmessage = true;
-
-//        if(count != 0)
-//            EEPROM_ReadPage(eeprom_log_addr + 6*count, rxdata[0] + framelength, framelength);
-//        else
-//            EEPROM_ReadPage(eeprom_log_addr + 6*count, rxdata[0], framelength);
-
-        if(++count >= 3)
+        if(EventLogRx_PopRecord(wire_record, &wire_length))
         {
-            count = 0;
-//            EEPROM_ReadPage(eeprom_log_addr, rxdata, 16);
-            eeprom_log_addr += 16;
-
-            if (eeprom_log_addr >= FLASH_LOG_END)
+            if(EventLog_CompressRecord(wire_record, wire_length, flash_record))
             {
-                eeprom_log_addr = FLASH_LOG_START;
-            }
+                /* Acknowledge the CPU only after the event is safely stored. */
+                EventLog_SendAck();
 
-            /* Also decode for live variables */
-            decode_log_message();
-            log_message_ready = false;
-            log_updated = true;
+                if(Flash_AppendEventRecord(flash_record))
+                {
+                    /* Persist the flash write pointer only after the complete 16-byte record has been programmed. */
+                    EEPROM_WritePointer(eeprom_log_addr);
+                }
+                else
+                {
+                    eeprom_logging_enabled = false;
+                }
+            }
+            else
+            {
+                /** Invalid or unsupported CPU event record. */
+                event_log_rx_errors++;
+            }
         }
     }
-//    static uint8_t logCount = 0;
+
+//    uint8_t wire_record[EVENT_LOG_RX_MAX_RECORD_SIZE];
+//    uint8_t wire_length;
+//    uint8_t flash_record[EVENT_LOG_FLASH_RECORD_SIZE];
 //
-//    if(logCount >= 15)
-//        return;
-//
-//    if((eeprom_log_addr & 0x0FFF) == 0x0100)
+//    if(eeprom_logging_enabled)
 //    {
-//        Flash_SectorErase(eeprom_log_addr & 0xFFFFF000);
+//        if(EventLogRx_PopRecord(wire_record, &wire_length))
+//        {
+//            /* Reassembled packet successfully parsed/validated. */
+//            if(EventLog_CompressRecord(wire_record, wire_length, flash_record))
+//            {
+//                /** ACK is intentionally BEFORE the flash write.
+//                 * At this point the complete packet has already
+//                 * been received and parsed successfully. */
+//                EventLog_SendAck();
+//
+//                /* Clear any previous runtime flash fault. */
+//                EEPROM_SPI_ClearFault();
+//
+//                /* Write the parsed 16-byte record to SPI NOR. */
+//                if(Flash_AppendEventRecord(flash_record) && !EEPROM_SPI_HasFault())
+//                {
+//                    /* Persist the pointer only after the flash
+//                     * operation completed without a SPI fault. */
+//                    EEPROM_WritePointer(eeprom_log_addr);
+//                }
+//                else
+//                {
+//                    /** Flash communication/programming failed.
+//                     * Do not continue attempting to log events.
+//                     * Most importantly, the CPU never gets trapped
+//                     * in an infinite SPI polling loop. */
+//                    eeprom_logging_enabled = false;
+//                }
+//            }
+//            else
+//            {
+//                /* Invalid or unsupported CPU event record. */
+//                event_log_rx_errors++;
+//            }
+//        }
 //    }
-//
-//    /* Frame 0 (6 bytes) */
-//    uint8_t f0[6] = {0x00,0x01,0x86,0xA0,0x12,0x34};
-//
-//    /* Frame 1 (6 bytes) */
-//    uint8_t f1[6] = {0x56,0x78,0x9A,0xBC,0xDE,0xF0};
-//
-//    /* Frame 2 (4 bytes) */
-//    uint8_t f2[4] = {0x11,0x22,0x33,0x44};
-//
-//    EEPROM_PageProgram(eeprom_log_addr,      f0, 6);
-//    EEPROM_PageProgram(eeprom_log_addr + 6,  f1, 6);
-//    EEPROM_PageProgram(eeprom_log_addr + 12, f2, 4);
-//
-//    eeprom_log_addr += 16;
-//    logCount++;
-//
-//    if(eeprom_log_addr >= 0x7F00)
-//        eeprom_log_addr = 0x0100;
 }
 
 void v_10msTasks(void)
@@ -519,18 +505,5 @@ void v_100msTasks(void)
 
 void v_1sTasks(void)
 {
-//    if(a == 4)
-//    if(UserUSB_IsReady())
-//    {
-//        const char msg[] = "Hello USB\r\n";
-//        if(UserUSB_Write((const uint8_t *)msg, sizeof(msg)-1))
-//        {
-//            b++;
-//        }
-//        else
-//        {
-//            b = 1000;
-//        }
-//
-//    }
+
 }

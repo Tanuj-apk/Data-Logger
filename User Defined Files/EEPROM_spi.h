@@ -3,14 +3,6 @@
 
 #include <stdint.h>
 
-/* Commands */
-//#define EEPROM_CMD_WREN   0x06
-//#define EEPROM_CMD_RDSR   0x05
-//#define EEPROM_CMD_READ   0x03
-//#define EEPROM_CMD_PGER   0xDB
-//#define EEPROM_CMD_PGPR   0x0A
-//#define EEPROM_CMD_WRSR   0x01
-
 #define CMD_WREN   0x06
 #define CMD_RDSR   0x05
 #define CMD_READ   0x03

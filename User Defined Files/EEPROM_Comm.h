@@ -3,58 +3,96 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-/* ================= FATFS (SD) ================= */
+
 #include "sd_spi.h"
 #include "ff.h"
 
-/* ================= FATFS OBJECTS ================= */
-FATFS fs;
-FIL file;
-UINT bw;
-FRESULT res;
+/* Flash log area */
+#define FLASH_LOG_START              0x00000100UL
+#define FLASH_LOG_END                0x0FFFFFF0UL
 
-volatile uint32_t cpu_time_sec = 0;
-volatile uint32_t loco_id = 0;
-volatile uint16_t speed = 0;
-volatile uint32_t abs_loc = 0;
-volatile uint8_t direction = 0;
-volatile uint32_t last_rfid = 0;
-volatile uint16_t tin = 0;
-volatile uint8_t brake_type = 0;
-volatile uint8_t system_fail = 0;
+/** Fixed SPI-flash record.
+ * Byte 0..3    EPOCH_TIME
+ * Byte 4..7    REFERENCE_LOCATION / RFID
+ * Byte 8..11   DISTANCE_FROM_REFERENCE_M
+ * Byte 12..15  EVENT-SPECIFIC DATA
+ * EVENT_ID IS NOT STORED IN FLASH. */
+#define EVENT_LOG_FLASH_RECORD_SIZE  16U
 
-volatile uint8_t log_frame_buf[3][6];
-volatile uint8_t log_frame_shadow[18];
-volatile uint8_t log_frame_buf_Read[3][6];
-volatile uint8_t log_frames_received = 0;
-volatile bool log_message_ready = false;
-extern uint16_t usb_block_index;
+/** CPU CAN event-record wire format.
+ * Byte 0..1    EVENT_ID
+ * Byte 2       SOURCE
+ * Byte 3       FORMAT_TYPE
+ * Byte 4       LOCATION_VALID
+ * Byte 5..8    EPOCH_TIME
+ * Byte 9..12   REFERENCE_LOCATION
+ * Byte 13..16  DISTANCE_FROM_REFERENCE_M
+ * Byte 17      PAYLOAD_LENGTH
+ * Byte 18..    EVENT-SPECIFIC PAYLOAD */
+#define EVENT_LOG_WIRE_HEADER_SIZE    18U
+#define EVENT_LOG_SOURCE_ONBOARD      0U
 
-static const uint8_t days_in_month[12] =
-{
-    31,28,31,30,31,30,31,31,30,31,30,31
-};
+#define EVENT_LOG_FMT_NONE                  0U
+#define EVENT_LOG_FMT_SPAD_ONBOARD          1U
+#define EVENT_LOG_FMT_SPAD_STATIONARY      2U
+#define EVENT_LOG_FMT_HEAD_ON_ONBOARD      3U
+#define EVENT_LOG_FMT_HEAD_ON_STATIONARY   4U
+#define EVENT_LOG_FMT_REAR_END_ONBOARD     5U
+#define EVENT_LOG_FMT_REAR_END_STATIONARY  6U
+#define EVENT_LOG_FMT_LOCO_SOS             7U
+#define EVENT_LOG_FMT_COMMUNICATION        8U
 
-//============ Date and Time conversion ============
-#define GPS_EPOCH_YEAR 1980
-#define GPS_EPOCH_DAY_OFFSET 5U
-#define SECONDS_PER_DAY 86400UL
+/** Event IDs are used only while interpreting the CPU CAN record.
+ * They are NOT written to SPI flash. */
+#define LOG_EVT_SPAD                           0x0201U
+#define LOG_EVT_HEAD_ON_COLLISION              0x0202U
+#define LOG_EVT_REAR_END_COLLISION             0x0203U
+#define LOG_EVT_MANUAL_SOS                     0x0204U
+#define LOG_EVT_MANUAL_SOS_CANCEL              0x0205U
+#define LOG_EVT_STATIONARY_SOS                 0x0206U
+#define LOG_EVT_STATIONARY_SOS_CANCEL          0x0207U
+#define LOG_EVT_FOREIGN_RFID_SOS               0x0208U
+#define LOG_EVT_ODO_ERROR_SOS                  0x0209U
+#define LOG_EVT_SHUNT_LIMIT_SOS                0x020AU
+#define LOG_EVT_TRAIN_TRIP                     0x020BU
+#define LOG_EVT_UNUSUAL_STOP                   0x020CU
+#define LOG_EVT_UNUSUAL_STOP_RELEASE           0x020DU
 
-uint8_t eeprom_page[64];
-uint32_t eeprom_log_addr = 0x0100;   // start address for log storage
-volatile bool eeprom_logging_enabled = true;
-char line[256];
+#define LOG_EVT_COMM_FAILURE                   0x0301U
+#define LOG_EVT_COMM_FAILURE_RECOVERY          0x0302U
+#define LOG_EVT_ADJACENT_KAVACH_COMM_FAILURE   0x0303U
+#define LOG_EVT_ADJACENT_KAVACH_COMM_RECOVERY  0x0304U
+#define LOG_EVT_TSRMS_COMM_FAILURE             0x0305U
+#define LOG_EVT_TSRMS_COMM_RECOVERY            0x0306U
+#define LOG_EVT_EI_COMM_FAILURE                0x0307U
+#define LOG_EVT_EI_COMM_RECOVERY               0x0308U
 
-static inline uint8_t is_leap_year(uint16_t year)
-{
-    return ((year % 4U == 0U && year % 100U != 0U) || (year % 400U == 0U));
-}
+/* FATFS objects */
+extern FATFS fs;
+extern FIL file;
+extern UINT bw;
+extern FRESULT res;
 
+/* Persistent log state */
+extern uint32_t eeprom_log_addr;
+extern volatile bool eeprom_logging_enabled;
+
+/* Time conversion / formatting */
 void seconds_to_calendar(uint32_t seconds, uint16_t *year, uint8_t *month, uint8_t *day, uint8_t *hour, uint8_t *min, uint8_t *sec);
 int u32_to_dec(char *out, uint32_t v);
+
+/* CAN-record processing */
+bool EventLog_CompressRecord(const uint8_t *wire, uint8_t wire_length, uint8_t storage[EVENT_LOG_FLASH_RECORD_SIZE]);
+bool Flash_AppendEventRecord(const uint8_t record[EVENT_LOG_FLASH_RECORD_SIZE]);
+
+uint16_t EventLog_FormatCsv(const uint8_t record[EVENT_LOG_FLASH_RECORD_SIZE], char *line, uint16_t line_size);
+
+/* Export */
 uint8_t EEPROM_to_SD(void);
 uint8_t EEPROM_to_USB(void);
-void decode_log_message(void);
+uint8_t EEPROM_to_USB_DIRECT(void);
+
+/* Existing test API */
 void SD_WRITE(void);
 
 #endif /* USER_DEFINED_FILES_EEPROM_COMM_H_ */
